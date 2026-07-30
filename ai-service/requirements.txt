@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+langgraph
+google-genai
+pymongo
+python-dotenv
+python-socketio
+numpy
+pydantic
