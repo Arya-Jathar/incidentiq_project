@@ -132,10 +132,27 @@ def runbook_node(state: IncidentState) -> IncidentState:
                 "numCandidates" : 10,
                 "limit" : 1
             }
+        },
+        {
+            "$project": {
+                "title": 1,
+                "service": 1,
+                "steps": 1,
+                "score": { "$meta": "vectorSearchScore" }
+            }
         }
     ]
 
     results = list(runbooks_collection.aggregate(pipeline))
+
+    # If the database isn't empty, check the similarity score of the best match
+    if len(results) > 0:
+        best_score = results[0].get("score", 0)
+        print(f"Best runbook match score: {best_score}")
+        # Threshold: 0.8 is a good baseline for strong cosine similarity with Gemini embeddings
+        if best_score < 0.80:
+            print("Match score too low, discarding result.")
+            results = []
 
     if len(results) == 0:
         print("No runbook found. Generating a new one autonomously...")
