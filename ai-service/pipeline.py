@@ -145,7 +145,7 @@ def comms_node(state: IncidentState) -> IncidentState:
     Team update:"""
 
     response = generate_with_retry(
-        model="gemini-3.5-flash",
+        model="gemini-3.6-flash",
         contents=prompt
     )
 
@@ -175,7 +175,7 @@ def postmortem_node(state: IncidentState) -> IncidentState:
     Runbook steps: {state['runbook_steps']}"""
 
     response = generate_with_retry(
-        model="gemini-3.5-flash",
+        model="gemini-3.6-flash",
         contents=prompt
     )
 
