@@ -27,7 +27,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SERVER_URL = os.environ.get("SERVER_URL", "http://localhost:3000")
 COOLDOWN_SECONDS = 60      # min seconds between pipeline triggers
 ERROR_BUFFER_WINDOW = 10   # seconds to collect errors before triggering
-MIN_ERROR_LINES = 2        # minimum error lines before triggering
+MIN_ERROR_LINES = 1        # trigger on any single error
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -39,7 +39,12 @@ pipeline_running = False
 
 
 # ── Socket.IO ────────────────────────────────────────────────────────────────
-sio = socketio.Client(reconnection=True, reconnection_attempts=5)
+sio = socketio.Client(
+    reconnection=True,
+    reconnection_attempts=5,
+    logger=False,
+    engineio_logger=False
+)
 
 @sio.event
 def connect():
@@ -101,7 +106,7 @@ Log excerpt:
 Incident description:"""
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-3.6-flash",
         contents=prompt
     )
     return response.text.strip()
@@ -145,6 +150,7 @@ def flush_buffer():
 
     while True:
         time.sleep(ERROR_BUFFER_WINDOW)
+        errors_to_process = []
         with buffer_lock:
             if len(error_buffer) >= MIN_ERROR_LINES:
                 errors_to_process = error_buffer.copy()
@@ -206,7 +212,11 @@ if __name__ == "__main__":
 
     # Connect to IncidentIQ server
     try:
-        sio.connect(SERVER_URL)
+        sio.connect(
+            SERVER_URL,
+            transports=["polling", "websocket"],
+            wait_timeout=15
+        )
     except Exception as e:
         print(f"❌ Could not connect to IncidentIQ server at {SERVER_URL}")
         print(f"   Error: {e}")

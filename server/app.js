@@ -5,6 +5,8 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const mongoose = require("mongoose");
+const Incident = require("./models/Incident");
+const Postmortem = require("./models/Postmortem");
 
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => {
@@ -48,28 +50,80 @@ const io = new Server(server, {
     }
 });
 
-const axios = require("axios")
+const axios = require("axios");
+
 io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
-    socket.on("run-pipeline", async(data) => {
-        try {
-            const response = await axios.post(`${process.env.AI_SERVICE_URL || "http://localhost:8000"}/run-pipeline`,{
-                incident_description: data.incident_description
-            });
-            
-            const result = response.data
-            socket.emit("agent-update", { name: "Triage", result: `${result.severity} - ${result.affected_service}` });
-            socket.emit("agent-update", { name: "Root Cause", result: result.root_cause });
-            socket.emit("agent-update", { name: "Runbook", result: result.runbook_title });
-            socket.emit("agent-update", { name: "Comms", result: result.comms_update });
-            socket.emit("agent-update", { name: "Postmortem", result: result.fix_applied });
 
-            socket.emit("pipeline-complete", result);
-        } catch(error){
+    socket.on("run-pipeline", async (data) => {
+        try {
+            const response = await axios.post(
+                `${process.env.AI_SERVICE_URL || "http://localhost:8000"}/run-pipeline`,
+                { incident_description: data.incident_description }
+            );
+
+            const result = response.data;
+
+            const noRunbook = !result.runbook_title ||
+                result.runbook_title.toLowerCase().includes("no match") ||
+                result.runbook_title.toLowerCase().includes("not found") ||
+                result.runbook_title === "N/A";
+
+            // Broadcast to ALL connected clients (browser + Python script)
+            io.emit("agent-update", { name: "Triage", result: `${result.severity} — ${result.affected_service}` });
+            io.emit("agent-update", { name: "Root Cause", result: result.root_cause });
+            io.emit("agent-update", { name: "Runbook", result: noRunbook ? "⚠️ No matching runbook found" : result.runbook_title });
+            io.emit("agent-update", { name: "Comms", result: result.comms_update });
+            io.emit("agent-update", { name: "Postmortem", result: result.fix_applied });
+
+            // Auto-save incident to MongoDB
+            const validSeverities = ["P0", "P1", "P2", "P3"];
+            const severity = validSeverities.includes(result.severity) ? result.severity : "P2";
+
+            const incident = await Incident.create({
+                title: `[Auto] ${result.affected_service || "Unknown"} — ${severity}`,
+                description: data.incident_description,
+                severity,
+                affectedService: result.affected_service || "Unknown",
+                status: "open",
+                agentOutput: {
+                    triage: `${result.severity} — ${result.affected_service}`,
+                    rootCause: result.root_cause,
+                    runbook: result.runbook_title,
+                    comms: result.comms_update,
+                    postmortem: result.fix_applied
+                }
+            });
+
+            // Auto-save postmortem to MongoDB
+            const preventionArr = Array.isArray(result.prevention_steps)
+                ? result.prevention_steps
+                : result.prevention_steps
+                    ? [result.prevention_steps]
+                    : [];
+
+            const postmortem = await Postmortem.create({
+                incident: incident._id,
+                rootCause: result.root_cause,
+                timeline: [data.incident_description],
+                fixApplied: result.fix_applied,
+                preventionSteps: preventionArr,
+                generatedBy: "ai"
+            });
+
+            io.emit("pipeline-complete", {
+                ...result,
+                incidentId: incident._id,
+                postmortemId: postmortem._id,
+                noRunbook
+            });
+
+        } catch (error) {
             console.log("Pipeline-error:", error.message);
-            socket.emit("pipeline-error", {message: "Pipeline failed to run"});
+            io.emit("pipeline-error", { message: "Pipeline failed to run" });
         }
     });
+
     socket.on("disconnect", () => {
         console.log("A user disconnected:", socket.id);
     });

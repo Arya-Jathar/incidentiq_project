@@ -18,7 +18,7 @@ const createRunbook = async (req, res) => {
 
         let embedding = [];
         try {
-            const embedResponse = await axios.post("http://localhost:8000/embed", {
+            const embedResponse = await axios.post(`${process.env.AI_SERVICE_URL || "http://localhost:8000"}/embed`, {
                 text: embeddingText
             });
             embedding = embedResponse.data.embedding;
