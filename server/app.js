@@ -81,7 +81,7 @@ io.on("connection", (socket) => {
             const severity = validSeverities.includes(result.severity) ? result.severity : "P2";
 
             const incident = await Incident.create({
-                title: `[Auto] ${result.affected_service || "Unknown"} — ${severity}`,
+                title: data.incident_description.split("\n")[0] || `[Auto] ${result.affected_service || "Unknown"} — ${severity}`,
                 description: data.incident_description,
                 severity,
                 affectedService: result.affected_service || "Unknown",

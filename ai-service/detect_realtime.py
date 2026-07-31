@@ -94,22 +94,26 @@ def is_error_line(line: str) -> bool:
 
 
 def generate_description(error_lines: list[str]) -> str:
-    """Use Gemini to turn raw error lines into a human incident description."""
+    """Use Gemini to produce a short incident title + raw log context for the pipeline."""
     error_block = "\n".join(error_lines[-30:])
-    prompt = f"""You are an on-call engineer who just saw these errors in server logs.
-Write a one-paragraph incident description that an engineer would write when opening a ticket.
-Be factual, based only on what's in the log. Mention the error type and where it occurred.
+    prompt = f"""You are an on-call engineer triaging a server error.
+Write a SHORT incident title in 4-6 words maximum. Be specific about the error type.
+Examples: "SQL injection on login endpoint", "Auth service 500 error", "Unhandled promise rejection in API"
 
 Log excerpt:
 {error_block}
 
-Incident description:"""
+Short incident title (4-6 words only):"""
 
     response = client.models.generate_content(
         model="gemini-3.6-flash",
         contents=prompt
     )
-    return response.text.strip()
+    short_title = response.text.strip().strip('"').strip("'")
+
+    # Return short title + raw logs so the pipeline has full context
+    return f"{short_title}\n\nRaw log context:\n{error_block}"
+
 
 
 def trigger_pipeline(errors: list[str]):
