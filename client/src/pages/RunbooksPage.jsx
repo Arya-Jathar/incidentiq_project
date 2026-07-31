@@ -47,13 +47,13 @@ function RunbooksPage() {
                             </div>
 
                             <ol className="text-sm text-gray-400 list-decimal list-inside space-y-1">
-                                {runbook.steps.map((step, i) => (
+                                {(runbook.steps || []).map((step, i) => (
                                     <li key={i}>{step}</li>
                                 ))}
                             </ol>
 
                             <div className="flex gap-1 mt-3">
-                                {runbook.tags.map((tag) => (
+                                {(runbook.tags || []).map((tag) => (
                                     <span key={tag} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">
                                         {tag}
                                     </span>
