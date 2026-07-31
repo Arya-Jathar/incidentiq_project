@@ -35,7 +35,7 @@ function RegisterPage() {
                 return;
             }
 
-            login(data.token);
+            login(data.token, data.user);
             addToast("Account created successfully", "success");
             navigate("/dashboard");
         } catch (err) {

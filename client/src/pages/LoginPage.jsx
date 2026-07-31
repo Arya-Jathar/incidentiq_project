@@ -31,7 +31,7 @@ function LoginPage() {
                 return;
             }
 
-            login(data.token);
+            login(data.token, data.user);
             navigate("/dashboard");
         } catch (err) {
             setError("Something went wrong. Try again.");

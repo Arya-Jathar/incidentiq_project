@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useToastStore } from "../store/useToastStore";
+import { useAuth } from "../context/AuthContext";
 import { API_URL } from "../config";
 
 const severityStyles = {
@@ -14,6 +15,8 @@ function IncidentCard({ id, title, severity, status, onDelete }) {
     const [loading, setLoading] = useState(false);
     const [deleting, setDeleting] = useState(false);
     const addToast = useToastStore((state) => state.addToast);
+    const { user } = useAuth();
+    const isAdmin = user?.role === "admin";
 
     const handleResolve = async () => {
         setLoading(true);
@@ -81,14 +84,16 @@ function IncidentCard({ id, title, severity, status, onDelete }) {
                     {loading ? "Resolving..." : isResolved ? "Resolved" : "Resolve"}
                 </button>
 
-                <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    title="Delete incident"
-                    className="px-2 py-1.5 text-xs font-medium rounded-md bg-red-900/50 text-red-400 hover:bg-red-800 hover:text-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                    {deleting ? "..." : "🗑"}
-                </button>
+                {isAdmin && (
+                    <button
+                        onClick={handleDelete}
+                        disabled={deleting}
+                        title="Delete incident"
+                        className="px-2 py-1.5 text-xs font-medium rounded-md bg-red-900/50 text-red-400 hover:bg-red-800 hover:text-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                        {deleting ? "..." : "🗑"}
+                    </button>
+                )}
             </div>
         </div>
     );

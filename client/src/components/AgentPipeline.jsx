@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { socket } from "../socket";
 import { useToastStore } from "../store/useToastStore";
+import { useAuth } from "../context/AuthContext";
 import { API_URL } from "../config";
 
 const AGENT_ICONS = {
@@ -20,6 +21,7 @@ const AGENT_COLORS = {
 };
 
 function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
+    const { user } = useAuth();
     const [updates, setUpdates] = useState([]);
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState(null);
@@ -176,10 +178,10 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
                 </div>
                 <button
                     onClick={handleRun}
-                    disabled={running || !incidentDescription}
+                    disabled={running || !incidentDescription || user?.role === "viewer"}
                     className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
-                    {running ? "Running..." : "Run Pipeline"}
+                    {user?.role === "viewer" ? "View Only" : running ? "Running..." : "Run Pipeline"}
                 </button>
             </div>
 
