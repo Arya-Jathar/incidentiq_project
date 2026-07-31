@@ -60,12 +60,10 @@ def triage_node(state: IncidentState) -> IncidentState:
         )
 
     result_text = response.text.strip()
-    result_text = result_text.replace("```json", "").replace("```", "").strip()
+    parsed = safe_json_parse(result_text, {"severity": "P2", "affected_service": "Unknown"})
 
-    parsed = json.loads(result_text)
-
-    state["severity"] = parsed["severity"]
-    state["affected_service"] = parsed["affected_service"]
+    state["severity"] = parsed.get("severity", "P2")
+    state["affected_service"] = parsed.get("affected_service", "Unknown")
 
     return state
 
@@ -92,11 +90,32 @@ def root_cause_node(state: IncidentState) -> IncidentState:
     return state
 
 def get_embedding(text):
-    result = client.models.embed_content(
-        model="gemini-embedding-001",
-        contents=text
-    )
-    return result.embeddings[0].values
+    delay = 5
+    for attempt in range(4):
+        try:
+            result = client.models.embed_content(
+                model="text-embedding-004",
+                contents=text
+            )
+            return result.embeddings[0].values
+        except (genai_errors.ServerError, genai_errors.ClientError) as e:
+            if attempt == 3:
+                raise
+            print(f"  Embedding error (attempt {attempt + 1}/4): {e}. Retrying in {delay}s...")
+            time.sleep(delay)
+            delay *= 2
+
+def safe_json_parse(text, default_val):
+    try:
+        clean_text = text.replace("```json", "").replace("```", "").strip()
+        import re
+        match = re.search(r'\{.*\}', clean_text, re.DOTALL)
+        if match:
+            clean_text = match.group(0)
+        return json.loads(clean_text)
+    except Exception as e:
+        print(f"JSON parsing failed: {e}. Raw text: {text}")
+        return default_val
 
 def runbook_node(state: IncidentState) -> IncidentState:
     print("Running Runbook Agent...")
@@ -180,12 +199,10 @@ def postmortem_node(state: IncidentState) -> IncidentState:
     )
 
     result_text = response.text.strip()
-    result_text = result_text.replace("```json", "").replace("```", "").strip()
+    parsed = safe_json_parse(result_text, {"fix_applied": "Manual resolution needed", "prevention_steps": []})
 
-    parsed = json.loads(result_text)
-
-    state["fix_applied"] = parsed["fix_applied"]
-    state["prevention_steps"] = parsed["prevention_steps"]
+    state["fix_applied"] = parsed.get("fix_applied", "Manual resolution needed")
+    state["prevention_steps"] = parsed.get("prevention_steps", [])
 
     return state
 
