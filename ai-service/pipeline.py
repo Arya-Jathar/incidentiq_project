@@ -17,15 +17,15 @@ client = genai.Client(api_key = os.environ["GEMINI_API_KEY"])
 
 def generate_with_retry(model, contents, max_retries=4):
     """Wraps client.models.generate_content with retry+backoff for
-    transient 503 UNAVAILABLE / high-demand errors from Gemini."""
-    delay = 2
+    transient 503 UNAVAILABLE and 429 RESOURCE_EXHAUSTED errors."""
+    delay = 5
     for attempt in range(max_retries):
         try:
             return client.models.generate_content(model=model, contents=contents)
-        except genai_errors.ServerError as e:
+        except (genai_errors.ServerError, genai_errors.ClientError) as e:
             if attempt == max_retries - 1:
                 raise
-            print(f"  Gemini overloaded (attempt {attempt + 1}/{max_retries}), retrying in {delay}s...")
+            print(f"  Gemini error (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {delay}s...")
             time.sleep(delay)
             delay *= 2
 
