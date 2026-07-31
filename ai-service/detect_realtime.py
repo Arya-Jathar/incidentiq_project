@@ -105,11 +105,15 @@ Log excerpt:
 
 Short incident title (4-6 words only):"""
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=prompt
-    )
-    short_title = response.text.strip().strip('"').strip("'")
+    try:
+        response = client.models.generate_content(
+            model="gemini-3.5-flash",
+            contents=prompt
+        )
+        short_title = response.text.strip().strip('"').strip("'")
+    except Exception as e:
+        print(f"  ⚠️ Gemini generation error ({e}). Using fallback title.")
+        short_title = "Automated log error detection"
 
     # Return short title + raw logs so the pipeline has full context
     return f"{short_title}\n\nRaw log context:\n{error_block}"

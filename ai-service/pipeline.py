@@ -55,7 +55,7 @@ def triage_node(state: IncidentState) -> IncidentState:
 
     Incident description: {state['incident_description']}"""
     response = generate_with_retry(
-            model="gemini-3.6-flash",
+            model="gemini-3.5-flash",
             contents=prompt
         )
 
@@ -82,7 +82,7 @@ def root_cause_node(state: IncidentState) -> IncidentState:
     Root cause hypothesis:"""
 
     response = generate_with_retry(
-        model="gemini-3.6-flash",
+        model="gemini-3.5-flash",
         contents=prompt
     )
 
@@ -164,7 +164,7 @@ def comms_node(state: IncidentState) -> IncidentState:
     Team update:"""
 
     response = generate_with_retry(
-        model="gemini-3.6-flash",
+        model="gemini-3.5-flash",
         contents=prompt
     )
 
@@ -194,7 +194,7 @@ def postmortem_node(state: IncidentState) -> IncidentState:
     Runbook steps: {state['runbook_steps']}"""
 
     response = generate_with_retry(
-        model="gemini-3.6-flash",
+        model="gemini-3.5-flash",
         contents=prompt
     )
 
