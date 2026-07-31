@@ -57,6 +57,27 @@ io.on("connection", (socket) => {
 
     socket.on("run-pipeline", async (data) => {
         try {
+            const shortTitle = data.incident_description.split("\n")[0] || "Incident detected";
+
+            // Step 1: Create incident IMMEDIATELY so frontend sees it right away
+            const incident = await Incident.create({
+                title: shortTitle,
+                description: data.incident_description,
+                severity: "P2",
+                affectedService: "Analyzing...",
+                status: "open",
+                resolution: "pending"
+            });
+
+            io.emit("incident-created", {
+                _id: incident._id,
+                title: incident.title,
+                severity: incident.severity,
+                status: incident.status,
+                createdAt: incident.createdAt
+            });
+
+            // Step 2: Run AI pipeline
             const response = await axios.post(
                 `${process.env.AI_SERVICE_URL || "http://localhost:8000"}/run-pipeline`,
                 { incident_description: data.incident_description }
@@ -76,16 +97,13 @@ io.on("connection", (socket) => {
             io.emit("agent-update", { name: "Comms", result: result.comms_update });
             io.emit("agent-update", { name: "Postmortem", result: result.fix_applied });
 
-            // Auto-save incident to MongoDB
+            // Step 3: Update incident with AI results
             const validSeverities = ["P0", "P1", "P2", "P3"];
             const severity = validSeverities.includes(result.severity) ? result.severity : "P2";
 
-            const incident = await Incident.create({
-                title: data.incident_description.split("\n")[0] || `[Auto] ${result.affected_service || "Unknown"} — ${severity}`,
-                description: data.incident_description,
+            await Incident.findByIdAndUpdate(incident._id, {
                 severity,
                 affectedService: result.affected_service || "Unknown",
-                status: "open",
                 agentOutput: {
                     triage: `${result.severity} — ${result.affected_service}`,
                     rootCause: result.root_cause,
@@ -95,12 +113,10 @@ io.on("connection", (socket) => {
                 }
             });
 
-            // Auto-save postmortem to MongoDB
+            // Step 4: Auto-save postmortem
             const preventionArr = Array.isArray(result.prevention_steps)
                 ? result.prevention_steps
-                : result.prevention_steps
-                    ? [result.prevention_steps]
-                    : [];
+                : result.prevention_steps ? [result.prevention_steps] : [];
 
             const postmortem = await Postmortem.create({
                 incident: incident._id,

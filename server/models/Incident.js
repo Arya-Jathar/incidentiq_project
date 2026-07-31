@@ -57,6 +57,17 @@ const incidentSchema = new mongoose.Schema(
             runbook: String,
             comms: String,
             postmortem: String
+        },
+
+        resolution: {
+            type: String,
+            enum: ["pending", "ai-accepted", "custom-resolved"],
+            default: "pending"
+        },
+
+        customSolution: {
+            type: String,
+            trim: true
         }
     },
     {

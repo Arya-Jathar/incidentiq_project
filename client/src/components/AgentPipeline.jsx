@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { socket } from "../socket";
 import { useToastStore } from "../store/useToastStore";
-import { useAuth } from "../context/AuthContext";
 import { API_URL } from "../config";
 
 const AGENT_ICONS = {
@@ -20,16 +19,18 @@ const AGENT_COLORS = {
     "Postmortem": "border-l-green-500"
 };
 
-function AgentPipeline({ incidentDescription, onPipelineComplete }) {
+function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
     const [updates, setUpdates] = useState([]);
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState(null);
+    const [mode, setMode] = useState(null); // null | 'improve'
+    const [customSolution, setCustomSolution] = useState("");
+    const [resolving, setResolving] = useState(false);
     const [showRunbookForm, setShowRunbookForm] = useState(false);
     const [runbookTitle, setRunbookTitle] = useState("");
     const [runbookService, setRunbookService] = useState("");
     const [runbookSteps, setRunbookSteps] = useState("");
     const [creatingRunbook, setCreatingRunbook] = useState(false);
-    const { token } = useAuth();
     const addToast = useToastStore((state) => state.addToast);
 
     useEffect(() => {
@@ -45,10 +46,9 @@ function AgentPipeline({ incidentDescription, onPipelineComplete }) {
         const handleComplete = (data) => {
             setRunning(false);
             setResult(data);
-            addToast("Pipeline complete — incident auto-saved!", "success");
+            addToast("Pipeline complete — review the AI solution below", "success");
             if (data.noRunbook) {
                 setShowRunbookForm(true);
-                addToast("No runbook found — create one below", "info");
             }
             if (onPipelineComplete) onPipelineComplete();
         };
@@ -67,9 +67,43 @@ function AgentPipeline({ incidentDescription, onPipelineComplete }) {
     const handleRun = () => {
         setUpdates([]);
         setResult(null);
+        setMode(null);
+        setCustomSolution("");
         setShowRunbookForm(false);
         setRunning(true);
         socket.emit("run-pipeline", { incident_description: incidentDescription });
+    };
+
+    const resolveIncident = async (resolution, solution) => {
+        if (!result?.incidentId) return;
+        setResolving(true);
+        try {
+            const body = {
+                status: "resolved",
+                resolution,
+                ...(solution ? { customSolution: solution } : {})
+            };
+            const res = await fetch(`${API_URL}/api/incidents/${result.incidentId}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify(body)
+            });
+            if (res.ok) {
+                addToast("✅ Incident resolved!", "success");
+                if (onPipelineComplete) onPipelineComplete();
+                setResult((prev) => ({ ...prev, resolved: true, resolution }));
+                setMode(null);
+            } else {
+                addToast("Failed to resolve incident", "error");
+            }
+        } catch (e) {
+            addToast("Failed to resolve incident", "error");
+        } finally {
+            setResolving(false);
+        }
     };
 
     const handleCreateRunbook = async () => {
@@ -79,29 +113,19 @@ function AgentPipeline({ incidentDescription, onPipelineComplete }) {
         }
         setCreatingRunbook(true);
         try {
-            const stepsArray = runbookSteps
-                .split("\n")
-                .map((s) => s.trim())
-                .filter(Boolean);
-
+            const stepsArray = runbookSteps.split("\n").map((s) => s.trim()).filter(Boolean);
             const res = await fetch(`${API_URL}/api/runbooks`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    title: runbookTitle,
-                    service: runbookService,
-                    steps: stepsArray
-                })
+                body: JSON.stringify({ title: runbookTitle, service: runbookService, steps: stepsArray })
             });
             if (res.ok) {
                 addToast("Runbook created and embedded! ✅", "success");
                 setShowRunbookForm(false);
-                setRunbookTitle("");
-                setRunbookService("");
-                setRunbookSteps("");
+                setRunbookTitle(""); setRunbookService(""); setRunbookSteps("");
             } else {
                 const err = await res.json();
                 addToast(err.message || "Failed to create runbook", "error");
@@ -139,10 +163,7 @@ function AgentPipeline({ incidentDescription, onPipelineComplete }) {
             {updates.length > 0 && (
                 <div className="flex flex-col gap-2">
                     {updates.map((agent, i) => (
-                        <div
-                            key={i}
-                            className={`text-xs bg-gray-800/60 px-3 py-2.5 rounded-lg border-l-2 ${AGENT_COLORS[agent.name] || "border-l-gray-600"}`}
-                        >
+                        <div key={i} className={`text-xs bg-gray-800/60 px-3 py-2.5 rounded-lg border-l-2 ${AGENT_COLORS[agent.name] || "border-l-gray-600"}`}>
                             <span className="mr-1.5">{AGENT_ICONS[agent.name] || "🤖"}</span>
                             <span className="font-semibold text-gray-100">{agent.name}:</span>{" "}
                             <span className="text-gray-400">{agent.result}</span>
@@ -152,61 +173,124 @@ function AgentPipeline({ incidentDescription, onPipelineComplete }) {
             )}
 
             {result && !running && (
-                <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-3 flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-green-400">✅ Pipeline complete — incident &amp; postmortem auto-saved</p>
-                    <div className="flex gap-4 text-xs text-gray-500">
-                        {result.incidentId && (
-                            <span>Incident ID: <span className="text-blue-400 font-mono">...{String(result.incidentId).slice(-6)}</span></span>
-                        )}
-                        {result.postmortemId && (
-                            <span>Postmortem ID: <span className="text-purple-400 font-mono">...{String(result.postmortemId).slice(-6)}</span></span>
+                <div className="flex flex-col gap-3">
+                    {/* Summary banner */}
+                    <div className="bg-gray-800/40 border border-gray-700 rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs font-semibold text-green-400">✅ Pipeline complete</p>
+                            {result.resolved && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/40 text-green-400 border border-green-800">
+                                    {result.resolution === "ai-accepted" ? "AI solution accepted" : "Custom solution applied"}
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex gap-4 text-xs text-gray-500">
+                            {result.incidentId && (
+                                <span>Incident: <span className="text-blue-400 font-mono">...{String(result.incidentId).slice(-6)}</span></span>
+                            )}
+                            {result.postmortemId && (
+                                <span>Postmortem: <span className="text-purple-400 font-mono">...{String(result.postmortemId).slice(-6)}</span></span>
+                            )}
+                        </div>
+                        {result.noRunbook && !result.resolved && (
+                            <p className="text-xs text-yellow-400 mt-1">⚠️ No matching runbook — create one below</p>
                         )}
                     </div>
-                    {result.noRunbook && (
-                        <p className="text-xs text-yellow-400">⚠️ No matching runbook — fill the form below to create one</p>
-                    )}
-                </div>
-            )}
 
-            {showRunbookForm && (
-                <div className="bg-yellow-950/30 border border-yellow-800/50 rounded-lg p-4 flex flex-col gap-3">
-                    <p className="text-xs font-semibold text-yellow-300">📖 Create a runbook for this incident type</p>
-                    <input
-                        type="text"
-                        placeholder="Runbook title (e.g. SQL Injection Response)"
-                        value={runbookTitle}
-                        onChange={(e) => setRunbookTitle(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50"
-                    />
-                    <input
-                        type="text"
-                        placeholder="Affected service (e.g. Authentication, Payment API)"
-                        value={runbookService}
-                        onChange={(e) => setRunbookService(e.target.value)}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50"
-                    />
-                    <textarea
-                        placeholder={`Steps (one per line):\nBlock malicious IP\nPatch input validation\nRotate DB credentials\nNotify security team`}
-                        value={runbookSteps}
-                        onChange={(e) => setRunbookSteps(e.target.value)}
-                        rows={4}
-                        className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50 resize-none"
-                    />
-                    <div className="flex gap-2">
-                        <button
-                            onClick={handleCreateRunbook}
-                            disabled={creatingRunbook || !runbookTitle || !runbookService || !runbookSteps}
-                            className="px-3 py-1.5 text-xs font-medium bg-yellow-600 text-white rounded-md hover:bg-yellow-500 disabled:opacity-50 transition-colors"
-                        >
-                            {creatingRunbook ? "Creating..." : "Create Runbook"}
-                        </button>
-                        <button
-                            onClick={() => setShowRunbookForm(false)}
-                            className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
-                        >
-                            Dismiss
-                        </button>
-                    </div>
+                    {/* Accept / Improve buttons */}
+                    {!result.resolved && (
+                        <div className="flex flex-col gap-2">
+                            <p className="text-xs text-gray-400 font-medium">Is this solution acceptable?</p>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => resolveIncident("ai-accepted", null)}
+                                    disabled={resolving}
+                                    className="flex-1 px-3 py-2 text-xs font-medium bg-green-700 text-white rounded-md hover:bg-green-600 disabled:opacity-50 transition-colors"
+                                >
+                                    {resolving ? "Resolving..." : "✅ Accept AI Solution"}
+                                </button>
+                                <button
+                                    onClick={() => setMode(mode === "improve" ? null : "improve")}
+                                    disabled={resolving}
+                                    className="flex-1 px-3 py-2 text-xs font-medium bg-orange-700 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 transition-colors"
+                                >
+                                    ✏️ Improve Solution
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Improve mode — custom solution textarea */}
+                    {mode === "improve" && !result.resolved && (
+                        <div className="bg-orange-950/30 border border-orange-800/50 rounded-lg p-4 flex flex-col gap-3">
+                            <p className="text-xs font-semibold text-orange-300">✏️ Your solution</p>
+                            <textarea
+                                value={customSolution}
+                                onChange={(e) => setCustomSolution(e.target.value)}
+                                placeholder="Describe what you actually did to fix this incident..."
+                                rows={3}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 resize-none"
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => resolveIncident("custom-resolved", customSolution)}
+                                    disabled={resolving || !customSolution.trim()}
+                                    className="px-4 py-1.5 text-xs font-medium bg-orange-600 text-white rounded-md hover:bg-orange-500 disabled:opacity-50 transition-colors"
+                                >
+                                    {resolving ? "Resolving..." : "Mark as Resolved"}
+                                </button>
+                                <button
+                                    onClick={() => setMode(null)}
+                                    className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Create runbook form */}
+                    {showRunbookForm && (
+                        <div className="bg-yellow-950/30 border border-yellow-800/50 rounded-lg p-4 flex flex-col gap-3">
+                            <p className="text-xs font-semibold text-yellow-300">📖 Create a runbook for this incident type</p>
+                            <input
+                                type="text"
+                                placeholder="Runbook title (e.g. SQL Injection Response)"
+                                value={runbookTitle}
+                                onChange={(e) => setRunbookTitle(e.target.value)}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50"
+                            />
+                            <input
+                                type="text"
+                                placeholder="Affected service (e.g. Authentication API)"
+                                value={runbookService}
+                                onChange={(e) => setRunbookService(e.target.value)}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50"
+                            />
+                            <textarea
+                                placeholder={`Steps (one per line):\nBlock malicious IP\nPatch input validation\nRotate DB credentials`}
+                                value={runbookSteps}
+                                onChange={(e) => setRunbookSteps(e.target.value)}
+                                rows={4}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-xs text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-1 focus:ring-yellow-500/50 resize-none"
+                            />
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={handleCreateRunbook}
+                                    disabled={creatingRunbook || !runbookTitle || !runbookService || !runbookSteps}
+                                    className="px-3 py-1.5 text-xs font-medium bg-yellow-600 text-white rounded-md hover:bg-yellow-500 disabled:opacity-50 transition-colors"
+                                >
+                                    {creatingRunbook ? "Creating..." : "Create Runbook"}
+                                </button>
+                                <button
+                                    onClick={() => setShowRunbookForm(false)}
+                                    className="px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200 transition-colors"
+                                >
+                                    Dismiss
+                                </button>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
 

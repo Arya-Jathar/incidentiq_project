@@ -7,6 +7,7 @@ import IncidentCard from "../components/IncidentCard";
 import AgentPipeline from "../components/AgentPipeline";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { useToastStore } from "../store/useToastStore";
+import { socket } from "../socket";
 import { API_URL } from "../config";
 
 function DashboardPage() {
@@ -38,6 +39,22 @@ function DashboardPage() {
     useEffect(() => {
         fetchIncidents();
     }, [fetchIncidents]);
+
+    // Listen for real-time incident creation — add to list instantly
+    useEffect(() => {
+        const handleIncidentCreated = (incident) => {
+            setIncidents((prev) => {
+                // Avoid duplicates
+                if (prev.find((i) => String(i._id) === String(incident._id))) return prev;
+                return [incident, ...prev];
+            });
+            setUnresolvedCount((c) => c + 1);
+            addToast(`🚨 New incident detected: ${incident.title}`, "error");
+        };
+
+        socket.on("incident-created", handleIncidentCreated);
+        return () => socket.off("incident-created", handleIncidentCreated);
+    }, []);
 
     const unresolvedCount = incidents.filter((i) => i.status !== "resolved").length;
     const resolvedCount = incidents.filter((i) => i.status === "resolved").length;
@@ -78,12 +95,12 @@ function DashboardPage() {
                     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                         <h2 className="text-sm font-semibold text-gray-300 mb-2">Incident description</h2>
                         <p className="text-xs text-gray-600 mb-3">
-                            Type or paste an incident below, or leave empty to let the real-time monitor trigger automatically.
+                            Type or paste an incident — or let the real-time monitor trigger automatically.
                         </p>
                         <textarea
                             value={incidentDescription}
                             onChange={(e) => setIncidentDescription(e.target.value)}
-                            placeholder="e.g. SQL injection attempt detected on /api/login. UnauthorizedError thrown, attacker IP: 192.168.1.100"
+                            placeholder="e.g. SQL injection attempt detected on /api/login"
                             rows={3}
                             className="w-full px-3 py-2 bg-gray-800/50 border border-gray-700 rounded-lg text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/30 resize-none transition-colors"
                         />
@@ -92,6 +109,7 @@ function DashboardPage() {
                     <AgentPipeline
                         incidentDescription={incidentDescription}
                         onPipelineComplete={fetchIncidents}
+                        token={token}
                     />
                 </div>
             </div>
