@@ -85,6 +85,9 @@ function DashboardPage() {
                                     title={incident.title}
                                     severity={incident.severity}
                                     status={incident.status}
+                                    onDelete={(deletedId) =>
+                                        setIncidents((prev) => prev.filter((i) => i._id !== deletedId))
+                                    }
                                 />
                             ))}
                         </div>
