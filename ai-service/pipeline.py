@@ -138,8 +138,49 @@ def runbook_node(state: IncidentState) -> IncidentState:
     results = list(runbooks_collection.aggregate(pipeline))
 
     if len(results) == 0:
-        state["runbook_title"] = "No matching runbook found"
-        state["runbook_steps"] = []
+        print("No runbook found. Generating a new one autonomously...")
+        prompt = f"""You are a DevOps expert. An incident has occurred, and there is no existing runbook.
+        
+        Incident: {state['incident_description']}
+        Affected service: {state['affected_service']}
+        Root cause hypothesis: {state['root_cause']}
+        
+        Create a new runbook for this specific issue. Provide a clear title, and a list of 3-5 specific steps to resolve it.
+        
+        Respond ONLY with a valid JSON object in this format:
+        {{
+            "title": "Clear, concise runbook title",
+            "steps": ["Step 1", "Step 2", "Step 3"]
+        }}"""
+        
+        response = generate_with_retry(
+            model="gemini-3.5-flash-lite",
+            contents=prompt
+        )
+        
+        parsed = safe_json_parse(response.text, {"title": f"Fix: {state['root_cause']}", "steps": ["Investigate manually"]})
+        new_title = parsed.get("title", f"Fix: {state['root_cause']}") + " (AI Generated)"
+        new_steps = parsed.get("steps", ["Investigate manually"])
+        
+        state["runbook_title"] = new_title
+        state["runbook_steps"] = new_steps
+        
+        try:
+            new_embedding = get_embedding(f"{state['affected_service']} - {new_title}")
+            from datetime import datetime, timezone
+            runbooks_collection.insert_one({
+                "title": new_title,
+                "service": state["affected_service"],
+                "steps": new_steps,
+                "embedding": new_embedding,
+                "tags": ["ai-generated", "auto"],
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc)
+            })
+            print("Successfully saved new AI-generated runbook to MongoDB.")
+        except Exception as e:
+            print(f"Failed to save generated runbook: {e}")
+            
         return state
     
     best_match = results[0]
