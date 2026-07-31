@@ -61,7 +61,7 @@ const incidentSchema = new mongoose.Schema(
 
         resolution: {
             type: String,
-            enum: ["pending", "ai-accepted", "custom-resolved"],
+            enum: ["pending", "ai-accepted", "custom-resolved", "ai-rejected"],
             default: "pending"
         },
 

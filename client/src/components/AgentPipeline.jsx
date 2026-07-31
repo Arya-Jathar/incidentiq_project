@@ -49,6 +49,12 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
             addToast("Pipeline complete — review the AI solution below", "success");
             if (data.noRunbook) {
                 setShowRunbookForm(true);
+                setRunbookTitle(data.root_cause ? `Fix: ${data.root_cause}` : "Incident Resolution");
+                setRunbookService(data.affected_service || "");
+                const steps = [];
+                if (data.fix_applied) steps.push(data.fix_applied);
+                if (Array.isArray(data.prevention_steps)) steps.push(...data.prevention_steps);
+                setRunbookSteps(steps.join("\n"));
             }
             if (onPipelineComplete) onPipelineComplete();
         };
@@ -79,7 +85,7 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
         setResolving(true);
         try {
             const body = {
-                status: "resolved",
+                status: resolution === "ai-rejected" ? "in-progress" : "resolved",
                 resolution,
                 ...(solution ? { customSolution: solution } : {})
             };
@@ -93,6 +99,30 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
             });
             if (res.ok) {
                 addToast("✅ Incident resolved!", "success");
+                
+                // Auto-create runbook for future use
+                if (result.noRunbook) {
+                    const stepsArray = solution 
+                        ? solution.split("\n").map(s => s.trim()).filter(Boolean)
+                        : [result.fix_applied, ...(result.prevention_steps || [])].filter(Boolean);
+                    
+                    try {
+                        await fetch(`${API_URL}/api/runbooks`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({
+                                title: result.root_cause ? `Runbook: ${result.root_cause}` : "Auto-generated Runbook",
+                                service: result.affected_service || "General",
+                                steps: stepsArray.length ? stepsArray : ["Investigate issue manually"]
+                            })
+                        });
+                        addToast("Solution automatically added to Runbooks! 📖", "success");
+                        setShowRunbookForm(false);
+                    } catch (e) {
+                        console.error("Runbook auto-create failed", e);
+                    }
+                }
+
                 if (onPipelineComplete) onPipelineComplete();
                 setResult((prev) => ({ ...prev, resolved: true, resolution }));
                 setMode(null);
@@ -179,8 +209,8 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
                         <div className="flex items-center justify-between mb-1">
                             <p className="text-xs font-semibold text-green-400">✅ Pipeline complete</p>
                             {result.resolved && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/40 text-green-400 border border-green-800">
-                                    {result.resolution === "ai-accepted" ? "AI solution accepted" : "Custom solution applied"}
+                                <span className={`text-xs px-2 py-0.5 rounded-full border ${result.resolution === 'ai-rejected' ? 'bg-red-900/40 text-red-400 border-red-800' : 'bg-green-900/40 text-green-400 border-green-800'}`}>
+                                    {result.resolution === "ai-accepted" ? "AI solution accepted" : result.resolution === "ai-rejected" ? "AI solution rejected" : "Custom solution applied"}
                                 </span>
                             )}
                         </div>
@@ -207,14 +237,21 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
                                     disabled={resolving}
                                     className="flex-1 px-3 py-2 text-xs font-medium bg-green-700 text-white rounded-md hover:bg-green-600 disabled:opacity-50 transition-colors"
                                 >
-                                    {resolving ? "Resolving..." : "✅ Accept AI Solution"}
+                                    {resolving ? "Resolving..." : "✅ Accept"}
                                 </button>
                                 <button
                                     onClick={() => setMode(mode === "improve" ? null : "improve")}
                                     disabled={resolving}
                                     className="flex-1 px-3 py-2 text-xs font-medium bg-orange-700 text-white rounded-md hover:bg-orange-600 disabled:opacity-50 transition-colors"
                                 >
-                                    ✏️ Improve Solution
+                                    ✏️ Improve
+                                </button>
+                                <button
+                                    onClick={() => resolveIncident("ai-rejected", null)}
+                                    disabled={resolving}
+                                    className="flex-1 px-3 py-2 text-xs font-medium bg-red-800/80 text-white rounded-md hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                >
+                                    ❌ Reject
                                 </button>
                             </div>
                         </div>
