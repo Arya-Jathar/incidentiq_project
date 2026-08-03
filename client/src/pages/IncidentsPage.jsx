@@ -80,7 +80,7 @@ function IncidentsPage() {
                             severity={incident.severity}
                             status={incident.status}
                             description={incident.description}
-                            onRunPipeline={(desc) => navigate("/", { state: { runIncident: desc } })}
+                            onRunPipeline={(desc) => navigate("/dashboard", { state: { runIncident: desc } })}
                         />
                     ))
                 )}
