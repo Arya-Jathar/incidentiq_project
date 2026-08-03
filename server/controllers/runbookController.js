@@ -47,9 +47,32 @@ const getRunbookById = async (req, res) => {
 
 const updateRunbook = async (req, res) => {
     try {
+        const updates = { ...req.body };
+        
+        // If content changed, regenerate the embedding so vector search stays accurate
+        if (updates.title || updates.service || updates.steps) {
+            try {
+                // Fetch existing to merge fields if only partially updating
+                const existing = await Runbook.findById(req.params.id);
+                if (!existing) return res.status(404).json({ message: "Runbook not found" });
+                
+                const title = updates.title || existing.title;
+                const service = updates.service || existing.service;
+                const steps = updates.steps || existing.steps;
+                
+                const embeddingText = `${service} - ${title}. Steps: ${(steps || []).join(", ")}`;
+                const embedResponse = await axios.post(`${process.env.AI_SERVICE_URL || "http://localhost:8000"}/embed`, {
+                    text: embeddingText
+                });
+                updates.embedding = embedResponse.data.embedding;
+            } catch (embedError) {
+                console.log("Embedding generation failed during update:", embedError.message);
+            }
+        }
+
         const runbook = await Runbook.findByIdAndUpdate(
             req.params.id,
-            req.body,
+            updates,
             { new: true, runValidators: true }
         );
         if (!runbook) {

@@ -17,6 +17,13 @@ function RunbooksPage() {
     const [newSteps, setNewSteps] = useState("");
     const [creating, setCreating] = useState(false);
     
+    // Edit form state
+    const [editingId, setEditingId] = useState(null);
+    const [editTitle, setEditTitle] = useState("");
+    const [editService, setEditService] = useState("");
+    const [editSteps, setEditSteps] = useState("");
+    const [savingEdit, setSavingEdit] = useState(false);
+    
     const addToast = useToastStore((state) => state.addToast);
 
     const fetchRunbooks = async () => {
@@ -75,6 +82,51 @@ function RunbooksPage() {
             addToast("Failed to create runbook", "error");
         } finally {
             setCreating(false);
+        }
+    };
+
+    const startEdit = (runbook) => {
+        setEditingId(runbook._id);
+        setEditTitle(runbook.title);
+        setEditService(runbook.service);
+        setEditSteps((runbook.steps || []).join("\n"));
+    };
+
+    const handleSaveEdit = async (e, id) => {
+        e.preventDefault();
+        if (!editTitle.trim() || !editService.trim() || !editSteps.trim()) {
+            addToast("Please fill in all fields", "error");
+            return;
+        }
+        
+        setSavingEdit(true);
+        try {
+            const stepsArray = editSteps.split("\n").map(s => s.trim()).filter(Boolean);
+            const response = await fetch(`${API_URL}/api/runbooks/${id}`, {
+                method: "PATCH",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    title: editTitle,
+                    service: editService,
+                    steps: stepsArray
+                })
+            });
+
+            if (response.ok) {
+                addToast("Runbook updated successfully!", "success");
+                setEditingId(null);
+                fetchRunbooks();
+            } else {
+                const err = await response.json();
+                addToast(err.message || "Failed to update runbook", "error");
+            }
+        } catch (error) {
+            addToast("Failed to update runbook", "error");
+        } finally {
+            setSavingEdit(false);
         }
     };
 
@@ -149,24 +201,75 @@ function RunbooksPage() {
                 ) : (
                     runbooks.map((runbook) => (
                         <div key={runbook._id} className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-medium text-gray-100">{runbook.title}</h3>
-                                <span className="text-xs text-gray-500">{runbook.service}</span>
-                            </div>
+                            {editingId === runbook._id ? (
+                                <form onSubmit={(e) => handleSaveEdit(e, runbook._id)} className="flex flex-col gap-3">
+                                    <input
+                                        type="text"
+                                        value={editTitle}
+                                        onChange={(e) => setEditTitle(e.target.value)}
+                                        className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={editService}
+                                        onChange={(e) => setEditService(e.target.value)}
+                                        className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+                                    />
+                                    <textarea
+                                        value={editSteps}
+                                        onChange={(e) => setEditSteps(e.target.value)}
+                                        rows={4}
+                                        className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-none"
+                                    />
+                                    <div className="flex justify-end gap-2 mt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setEditingId(null)}
+                                            className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            type="submit"
+                                            disabled={savingEdit}
+                                            className="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-1.5 rounded-md text-xs transition-colors"
+                                        >
+                                            {savingEdit ? "Saving..." : "Save"}
+                                        </button>
+                                    </div>
+                                </form>
+                            ) : (
+                                <>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div>
+                                            <h3 className="font-medium text-gray-100">{runbook.title}</h3>
+                                            <span className="text-xs text-gray-500">{runbook.service}</span>
+                                        </div>
+                                        {user?.role === "admin" && (
+                                            <button 
+                                                onClick={() => startEdit(runbook)}
+                                                className="text-xs text-blue-500 hover:text-blue-400 transition-colors"
+                                            >
+                                                Edit
+                                            </button>
+                                        )}
+                                    </div>
 
-                            <ol className="text-sm text-gray-400 list-decimal list-inside space-y-1">
-                                {(runbook.steps || []).map((step, i) => (
-                                    <li key={i}>{step}</li>
-                                ))}
-                            </ol>
+                                    <ol className="text-sm text-gray-400 list-decimal list-inside space-y-1">
+                                        {(runbook.steps || []).map((step, i) => (
+                                            <li key={i}>{step}</li>
+                                        ))}
+                                    </ol>
 
-                            <div className="flex gap-1 mt-3">
-                                {(runbook.tags || []).map((tag) => (
-                                    <span key={tag} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">
-                                        {tag}
-                                    </span>
-                                ))}
-                            </div>
+                                    <div className="flex gap-1 mt-3">
+                                        {(runbook.tags || []).map((tag) => (
+                                            <span key={tag} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
                         </div>
                     ))
                 )}
