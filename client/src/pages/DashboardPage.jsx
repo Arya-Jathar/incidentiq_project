@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useIncidentStore } from "../store/useIncidentStore";
 import Layout from "../components/Layout";
@@ -11,12 +12,20 @@ import { socket } from "../socket";
 import { API_URL } from "../config";
 
 function DashboardPage() {
+    const location = useLocation();
+    const navigate = useNavigate();
     const { token } = useAuth();
     const [incidents, setIncidents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [incidentDescription, setIncidentDescription] = useState("");
+    const [runTrigger, setRunTrigger] = useState(0);
     const addToast = useToastStore((state) => state.addToast);
     const setUnresolvedCount = useIncidentStore((state) => state.setUnresolvedCount);
+
+    const handleRunOldIncident = (desc) => {
+        setIncidentDescription(desc);
+        setRunTrigger((prev) => prev + 1);
+    };
 
     const fetchIncidents = useCallback(async () => {
         try {
@@ -56,6 +65,14 @@ function DashboardPage() {
         return () => socket.off("incident-created", handleIncidentCreated);
     }, []);
 
+    useEffect(() => {
+        if (location.state?.runIncident) {
+            handleRunOldIncident(location.state.runIncident);
+            // Clear the state so it doesn't re-run on refresh
+            navigate(".", { replace: true, state: {} });
+        }
+    }, [location.state, navigate]);
+
     const unresolvedCount = incidents.filter((i) => i.status !== "resolved").length;
     const resolvedCount = incidents.filter((i) => i.status === "resolved").length;
 
@@ -85,6 +102,8 @@ function DashboardPage() {
                                     title={incident.title}
                                     severity={incident.severity}
                                     status={incident.status}
+                                    description={incident.description}
+                                    onRunPipeline={handleRunOldIncident}
                                     onDelete={(deletedId) =>
                                         setIncidents((prev) => prev.filter((i) => i._id !== deletedId))
                                     }
@@ -113,6 +132,7 @@ function DashboardPage() {
                         incidentDescription={incidentDescription}
                         onPipelineComplete={fetchIncidents}
                         token={token}
+                        runTrigger={runTrigger}
                     />
                 </div>
             </div>

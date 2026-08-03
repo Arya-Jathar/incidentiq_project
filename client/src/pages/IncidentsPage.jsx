@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Layout from "../components/Layout";
 import IncidentCard from "../components/IncidentCard";
@@ -12,6 +13,7 @@ function IncidentsPage() {
     const [filter, setFilter] = useState("all");
     const [loading, setLoading] = useState(true);
     const addToast = useToastStore((state) => state.addToast);
+    const navigate = useNavigate();
 
     useEffect(() => {
         const fetchIncidents = async () => {
@@ -77,6 +79,8 @@ function IncidentsPage() {
                             title={incident.title}
                             severity={incident.severity}
                             status={incident.status}
+                            description={incident.description}
+                            onRunPipeline={(desc) => navigate("/", { state: { runIncident: desc } })}
                         />
                     ))
                 )}

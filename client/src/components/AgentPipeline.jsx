@@ -20,7 +20,7 @@ const AGENT_COLORS = {
     "Postmortem": "border-l-green-500"
 };
 
-function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
+function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrigger }) {
     const { user } = useAuth();
     const [updates, setUpdates] = useState([]);
     const [running, setRunning] = useState(false);
@@ -81,6 +81,12 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
         setRunning(true);
         socket.emit("run-pipeline", { incident_description: incidentDescription });
     };
+
+    useEffect(() => {
+        if (runTrigger > 0 && incidentDescription) {
+            handleRun();
+        }
+    }, [runTrigger]);
 
     const resolveIncident = async (resolution, solution) => {
         if (!result?.incidentId) return;
