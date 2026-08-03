@@ -102,6 +102,22 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token }) {
             if (res.ok) {
                 addToast("✅ Incident resolved!", "success");
                 
+                // Update Postmortem if custom solution provided
+                if (solution && result.postmortemId) {
+                    try {
+                        await fetch(`${API_URL}/api/postmortems/${result.postmortemId}`, {
+                            method: "PATCH",
+                            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({
+                                fixApplied: solution,
+                                generatedBy: "human"
+                            })
+                        });
+                    } catch (e) {
+                        console.error("Failed to update postmortem", e);
+                    }
+                }
+                
                 // Auto-create runbook for future use
                 if (result.noRunbook) {
                     const stepsArray = solution 
