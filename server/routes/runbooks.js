@@ -10,7 +10,7 @@ const {
 } = require("../controllers/runbookController");
 
 router.get("/", protect, getAllRunbooks);
-router.post("/", protect, authorize("admin"), createRunbook);
+router.post("/", protect, authorize("admin", "engineer"), createRunbook);
 router.get("/:id", protect, getRunbookById);
 router.patch("/:id", protect, authorize("admin"), updateRunbook);
 router.delete("/:id", protect, authorize("admin"), deleteRunbook);

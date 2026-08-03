@@ -182,22 +182,6 @@ def runbook_node(state: IncidentState) -> IncidentState:
         state["runbook_title"] = new_title
         state["runbook_steps"] = new_steps
         
-        try:
-            new_embedding = get_embedding(f"{state['affected_service']} - {new_title}")
-            from datetime import datetime, timezone
-            runbooks_collection.insert_one({
-                "title": new_title,
-                "service": state["affected_service"],
-                "steps": new_steps,
-                "embedding": new_embedding,
-                "tags": ["ai-generated", "auto"],
-                "createdAt": datetime.now(timezone.utc),
-                "updatedAt": datetime.now(timezone.utc)
-            })
-            print("Successfully saved new AI-generated runbook to MongoDB.")
-        except Exception as e:
-            print(f"Failed to save generated runbook: {e}")
-            
         return state
     
     best_match = results[0]
