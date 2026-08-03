@@ -7,7 +7,20 @@ import json
 import time
 from dotenv import load_dotenv
 from pymongo import MongoClient
+import urllib.request
+
 load_dotenv()
+
+NODE_URL = os.environ.get("NODE_URL", "http://localhost:5000")
+
+def notify_progress(name, status, result=None):
+    try:
+        url = f"{NODE_URL}/api/pipeline-progress"
+        data = json.dumps({"name": name, "status": status, "result": result}).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'}, method='POST')
+        urllib.request.urlopen(req, timeout=1)
+    except Exception as e:
+        print(f"Failed to notify progress: {e}")
 
 mongo_client = MongoClient(os.environ["MONGODB_URI"])
 db = mongo_client["incidentiq"]
@@ -42,6 +55,7 @@ class IncidentState(TypedDict):
 
 def triage_node(state: IncidentState) -> IncidentState:
     print("Running Triage Agent...")
+    notify_progress("Triage", "running")
 
     prompt = f"""You are an incident triage classifier.
 
@@ -65,10 +79,12 @@ def triage_node(state: IncidentState) -> IncidentState:
     state["severity"] = parsed.get("severity", "P2")
     state["affected_service"] = parsed.get("affected_service", "Unknown")
 
+    notify_progress("Triage", "complete", f"{state['severity']} — {state['affected_service']}")
     return state
 
 def root_cause_node(state: IncidentState) -> IncidentState:
     print("Running Root Cause Agent...")
+    notify_progress("Root Cause", "running")
 
     prompt = f"""You are a root cause analysis assistant for incident response.
 
@@ -87,6 +103,7 @@ def root_cause_node(state: IncidentState) -> IncidentState:
     )
 
     state["root_cause"] = response.text.strip()
+    notify_progress("Root Cause", "complete", state["root_cause"])
     return state
 
 def get_embedding(text):
@@ -119,6 +136,7 @@ def safe_json_parse(text, default_val):
 
 def runbook_node(state: IncidentState) -> IncidentState:
     print("Running Runbook Agent...")
+    notify_progress("Runbook", "running")
 
     search_text = f"{state['affected_service']} - {state['root_cause']}"
     incident_embedding = get_embedding(search_text)
@@ -182,15 +200,18 @@ def runbook_node(state: IncidentState) -> IncidentState:
         state["runbook_title"] = new_title
         state["runbook_steps"] = new_steps
         
+        notify_progress("Runbook", "complete", state["runbook_title"])
         return state
     
     best_match = results[0]
     state["runbook_title"] = best_match["title"]
     state["runbook_steps"] = best_match["steps"]
+    notify_progress("Runbook", "complete", state["runbook_title"])
     return state
 
 def comms_node(state: IncidentState) -> IncidentState:
     print("Running Comms Agent...")
+    notify_progress("Comms", "running")
 
     prompt = f"""You are drafting an internal team communication update about an ongoing incident.
 
@@ -211,10 +232,12 @@ def comms_node(state: IncidentState) -> IncidentState:
     )
 
     state["comms_update"] = response.text.strip()
+    notify_progress("Comms", "complete", state["comms_update"])
     return state
 
 def postmortem_node(state: IncidentState) -> IncidentState:
     print("Running Postmortem Agent...")
+    notify_progress("Postmortem", "running")
 
     prompt = f"""You are writing a postmortem report for a resolved incident.
 
@@ -246,6 +269,7 @@ def postmortem_node(state: IncidentState) -> IncidentState:
     state["fix_applied"] = parsed.get("fix_applied", "Manual resolution needed")
     state["prevention_steps"] = parsed.get("prevention_steps", [])
 
+    notify_progress("Postmortem", "complete", state["fix_applied"])
     return state
 
 def summary_node(state: IncidentState) -> IncidentState:

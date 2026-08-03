@@ -50,6 +50,16 @@ const io = new Server(server, {
     }
 });
 
+app.post("/api/pipeline-progress", (req, res) => {
+    const { name, status, result } = req.body;
+    if (status === "running") {
+        io.emit("agent-running", { name });
+    } else if (status === "complete") {
+        io.emit("agent-update", { name, result });
+    }
+    res.json({ ok: true });
+});
+
 const axios = require("axios");
 
 io.on("connection", (socket) => {
@@ -89,13 +99,6 @@ io.on("connection", (socket) => {
                 result.runbook_title.toLowerCase().includes("no match") ||
                 result.runbook_title.toLowerCase().includes("not found") ||
                 result.runbook_title === "N/A";
-
-            // Broadcast to ALL connected clients (browser + Python script)
-            io.emit("agent-update", { name: "Triage", result: `${result.severity} — ${result.affected_service}` });
-            io.emit("agent-update", { name: "Root Cause", result: result.root_cause });
-            io.emit("agent-update", { name: "Runbook", result: noRunbook ? "⚠️ No matching runbook found" : result.runbook_title });
-            io.emit("agent-update", { name: "Comms", result: result.comms_update });
-            io.emit("agent-update", { name: "Postmortem", result: result.fix_applied });
 
             // Step 3: Update incident with AI results
             const validSeverities = ["P0", "P1", "P2", "P3"];

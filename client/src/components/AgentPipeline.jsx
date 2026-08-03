@@ -23,6 +23,7 @@ const AGENT_COLORS = {
 function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrigger }) {
     const { user } = useAuth();
     const [updates, setUpdates] = useState([]);
+    const [activeAgent, setActiveAgent] = useState(null);
     const [running, setRunning] = useState(false);
     const [result, setResult] = useState(null);
     const [mode, setMode] = useState(null); // null | 'improve'
@@ -36,17 +37,24 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
     const addToast = useToastStore((state) => state.addToast);
 
     useEffect(() => {
+        const handleAgentRunning = (data) => {
+            setActiveAgent(data.name);
+        };
+
         const handleAgentUpdate = (agent) => {
             setUpdates((prev) => [...prev, agent]);
+            setActiveAgent(null);
         };
 
         const handleError = () => {
             setRunning(false);
+            setActiveAgent(null);
             addToast("Pipeline failed to run", "error");
         };
 
         const handleComplete = (data) => {
             setRunning(false);
+            setActiveAgent(null);
             setResult(data);
             addToast("Pipeline complete — review the AI solution below", "success");
             if (data.noRunbook) {
@@ -61,11 +69,13 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
             if (onPipelineComplete) onPipelineComplete();
         };
 
+        socket.on("agent-running", handleAgentRunning);
         socket.on("agent-update", handleAgentUpdate);
         socket.on("pipeline-error", handleError);
         socket.on("pipeline-complete", handleComplete);
 
         return () => {
+            socket.off("agent-running", handleAgentRunning);
             socket.off("agent-update", handleAgentUpdate);
             socket.off("pipeline-error", handleError);
             socket.off("pipeline-complete", handleComplete);
@@ -77,6 +87,7 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
         setResult(null);
         setMode(null);
         setCustomSolution("");
+        setActiveAgent(null);
         setShowRunbookForm(false);
         setRunning(true);
         socket.emit("run-pipeline", { incident_description: incidentDescription });
@@ -207,22 +218,33 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
                 </button>
             </div>
 
-            {running && (
+            {running && !activeAgent && (
                 <div className="flex items-center gap-2 text-xs text-blue-400">
                     <div className="w-3 h-3 border border-blue-400 border-t-transparent rounded-full animate-spin" />
-                    Agents working...
+                    Initializing agents...
                 </div>
             )}
 
             {updates.length > 0 && (
                 <div className="flex flex-col gap-2">
                     {updates.map((agent, i) => (
-                        <div key={i} className={`text-xs bg-gray-800/60 px-3 py-2.5 rounded-lg border-l-2 ${AGENT_COLORS[agent.name] || "border-l-gray-600"}`}>
+                        <div
+                            key={i}
+                            className={`text-xs bg-gray-800/60 px-3 py-2.5 rounded-lg border-l-2 ${AGENT_COLORS[agent.name] || "border-l-gray-600"}`}
+                        >
                             <span className="mr-1.5">{AGENT_ICONS[agent.name] || "🤖"}</span>
                             <span className="font-semibold text-gray-100">{agent.name}:</span>{" "}
                             <span className="text-gray-400">{agent.result}</span>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {activeAgent && (
+                <div className={`text-xs bg-gray-800/40 px-3 py-2.5 rounded-lg border-l-2 ${AGENT_COLORS[activeAgent] || "border-l-gray-600"} flex items-center gap-2`}>
+                    <span className="mr-1.5">{AGENT_ICONS[activeAgent] || "🤖"}</span>
+                    <span className="font-semibold text-gray-100">{activeAgent}</span>
+                    <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin" />
                 </div>
             )}
 
