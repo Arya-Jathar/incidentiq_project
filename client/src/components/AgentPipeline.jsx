@@ -53,6 +53,7 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
         };
 
         const handleComplete = (data) => {
+            if (window.agentInterval) clearInterval(window.agentInterval);
             setRunning(false);
             setActiveAgent(null);
             setResult(data);
@@ -94,6 +95,7 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
         socket.on("pipeline-complete", handleComplete);
 
         return () => {
+            if (window.agentInterval) clearInterval(window.agentInterval);
             socket.off("agent-running", handleAgentRunning);
             socket.off("agent-update", handleAgentUpdate);
             socket.off("pipeline-error", handleError);
@@ -106,9 +108,22 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
         setResult(null);
         setMode(null);
         setCustomSolution("");
-        setActiveAgent(null);
+        setActiveAgent("Triage");
         setShowRunbookForm(false);
         setRunning(true);
+        
+        if (window.agentInterval) clearInterval(window.agentInterval);
+        let currentStep = 0;
+        const sequence = ["Triage", "Root Cause", "Runbook", "Comms", "Postmortem"];
+        window.agentInterval = setInterval(() => {
+            currentStep++;
+            if (currentStep < sequence.length) {
+                setActiveAgent(sequence[currentStep]);
+            } else {
+                clearInterval(window.agentInterval);
+            }
+        }, 1500);
+
         socket.emit("run-pipeline", { incident_description: incidentDescription });
     };
 
