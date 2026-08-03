@@ -56,6 +56,25 @@ function AgentPipeline({ incidentDescription, onPipelineComplete, token, runTrig
             setRunning(false);
             setActiveAgent(null);
             setResult(data);
+            
+            setUpdates((prev) => {
+                if (prev.length === 0) {
+                    const noRunbook = !data.runbook_title ||
+                        data.runbook_title.toLowerCase().includes("no match") ||
+                        data.runbook_title.toLowerCase().includes("not found") ||
+                        data.runbook_title === "N/A";
+                        
+                    return [
+                        { name: "Triage", result: `${data.severity} — ${data.affected_service}` },
+                        { name: "Root Cause", result: data.root_cause },
+                        { name: "Runbook", result: noRunbook ? "⚠️ No matching runbook found" : data.runbook_title },
+                        { name: "Comms", result: data.comms_update },
+                        { name: "Postmortem", result: data.fix_applied }
+                    ];
+                }
+                return prev;
+            });
+
             addToast("Pipeline complete — review the AI solution below", "success");
             if (data.noRunbook) {
                 setShowRunbookForm(true);
